@@ -1,15 +1,24 @@
-#include <Stepper.h> 
-#define STEPS 200
-// Define stepper motor connections and motor interface type. Motor interface type must be set to 1 when using a driver
-Stepper stepper(STEPS, 2, 3); // Pin 2 connected to DIRECTION & Pin 3 connected to STEP Pin of Driver
-#define motorInterfaceType 1
-int Pval = 0;
-int potVal = 0;
+const int stepX = 2; // Step signal pin
+const int dirX  = 5; // Direction signal pin
+const int enPin = 8; // Enable signal pin
+
+// Fixed speed delay in microseconds (adjust this for your desired speed)
+const int stepDelay =1000; // 500 µs delay for a reasonable speed (higher = slower)
+
 void setup() {
-  // Set the maximum speed in steps per second:
-  stepper.setSpeed(1000);
+  pinMode(stepX, OUTPUT);
+  pinMode(dirX, OUTPUT);
+  pinMode(enPin, OUTPUT);
+
+  digitalWrite(enPin, LOW); // Enable the motor driver
+  digitalWrite(dirX, HIGH); // Set direction to clockwise
 }
+
 void loop() {
-  stepper.step(10);
-  delay(300);
+  while (true) { // Continuous rotation
+    digitalWrite(stepX, HIGH);
+    delayMicroseconds(stepDelay); // Delay determines speed
+    digitalWrite(stepX, LOW);
+    delayMicroseconds(stepDelay);
+  }
 }
