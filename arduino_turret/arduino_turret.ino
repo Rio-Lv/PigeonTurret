@@ -1,46 +1,24 @@
-char receivedChar;
-boolean newData = false;
+#include <Stepper.h>
+
+const int stepsPerRevolution = 200; // Adjust this based on your motor's specifications [1, 3]
+const int motorPin1 = 8;
+const int motorPin2 = 9;
+const int motorPin3 = 10;
+const int motorPin4 = 11;
+
+Stepper myStepper(stepsPerRevolution, motorPin1, motorPin2, motorPin3, motorPin4);
 
 void setup() {
-
-  Serial.begin(9600);
-
-  pinMode(3, OUTPUT);
-  pinMode(5, OUTPUT);
-  pinMode(6, OUTPUT);
-  
+  myStepper.setSpeed(60); // Set speed to 60 RPM [4, 5]
+  Serial.begin(9600); // For debugging
 }
 
 void loop() {
+  Serial.println("Clockwise");
+  myStepper.step(stepsPerRevolution); // Rotate one revolution clockwise [4, 5]
+  delay(500);
 
-  recvInfo();
-  lightLED();
-  
-}
-
-void recvInfo() {
-
-  if (Serial.available() > 0) {
-
-    receivedChar = Serial.read();
-    newData = true;
-    
-  }
-  
-}
-
-void lightLED() {
-
-  int led = (receivedChar - '0');
-
-  while(newData == true) {
-
-    digitalWrite(led, HIGH);
-    delay(2000);
-    digitalWrite(led, LOW);
-
-    newData = false;
-    
-  }
-  
+  Serial.println("Counterclockwise");
+  myStepper.step(-stepsPerRevolution); // Rotate one revolution counterclockwise [4, 5]
+  delay(500);
 }
