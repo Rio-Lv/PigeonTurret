@@ -55,9 +55,15 @@ def main():
             elif key == keyboard.Key.down:
                 print("↓  Down command sent")
                 ser.write(b'd')
+            elif key == keyboard.Key.left:
+                print("←  Left command sent")
+                ser.write(b'l')
+            elif key == keyboard.Key.right:
+                print("→  Right command sent")
+                ser.write(b'r')
             elif key == keyboard.Key.esc:
                 print("Exiting...")
-                return False  # Stop listener
+                return False  # Stop listener    
         except serial.SerialException:
             print("⚠️  Error: Lost connection to serial port.")
             return False
