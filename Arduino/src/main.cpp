@@ -1,20 +1,14 @@
 #include <Arduino.h>
-const int stepX = 2;  // Step signal pin
-const int dirX  = 5;  // Direction signal pin
-const int enPin = 8;  // Enable signal pin
 
-// Fixed speed delay in microseconds (adjust this for your desired speed)
-const int stepDelay = 1000; // 1 ms delay between step edges
+const int stepX = 2;     // STEP pin
+const int dirX  = 5;     // DIR  pin
+const int enPin = 8;     // ENABLE pin
 
-// Steps per full revolution of the motor. Adjust to match your driver
-// microstepping configuration. With a typical 1.8° stepper at full step
-// this would be 200.
-const int stepsPerRevolution = 200;
+// Tweak these for your hardware
+const int stepDelay = 1000;              // µs between rising edges
+const int stepsPerRevolution = 200 * 4;  // matches your driver’s µstep mode
+const int quarterTurn = stepsPerRevolution / 4; // 90° worth of steps
 
-// Number of steps required for a 90° (quarter turn) move.
-const int quarterTurnSteps = stepsPerRevolution / 4;
-
-// Perform a single step taking the configured delay into account
 void singleStep() {
   digitalWrite(stepX, HIGH);
   delayMicroseconds(stepDelay);
@@ -22,28 +16,32 @@ void singleStep() {
   delayMicroseconds(stepDelay);
 }
 
-// Rotate the motor a given number of steps in the specified direction
 void rotateSteps(int steps, bool clockwise) {
   digitalWrite(dirX, clockwise ? HIGH : LOW);
-  for (int i = 0; i < steps; ++i) {
-    singleStep();
-  }
+  for (int i = 0; i < steps; ++i) singleStep();
 }
 
 void setup() {
   pinMode(stepX, OUTPUT);
-  pinMode(dirX, OUTPUT);
+  pinMode(dirX,  OUTPUT);
   pinMode(enPin, OUTPUT);
+  digitalWrite(enPin, LOW);     // enable driver
 
-  digitalWrite(enPin, LOW); // Enable the motor driver
+  Serial.begin(115200);
+  Serial.println(F("Stepper ready"));
 }
 
 void loop() {
-  // Rotate 90° clockwise
-  rotateSteps(quarterTurnSteps, true);
-  delay(500); // Small pause
+  if (Serial.available()) {
+    char cmd = Serial.read();
 
-  // Rotate 90° back to the starting position
-  rotateSteps(quarterTurnSteps, false);
-  delay(500);
+    switch (cmd) {
+      case 'u': rotateSteps(quarterTurn, true);  break;  // ↑  pressed
+      case 'd': rotateSteps(quarterTurn, false); break;  // ↓  pressed
+      // Add more cases if you want finer or coarser moves:
+      // case 'U': rotateSteps(stepsPerRevolution, true);  break;   // full rev CW
+      // case 'D': rotateSteps(stepsPerRevolution, false); break;   // full rev CCW
+      default:   /* ignore anything else */            break;
+    }
+  }
 }
