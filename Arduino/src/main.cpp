@@ -1,106 +1,77 @@
+/**
+ * Continuous two-axis control with AccelStepper
+ * Hold ← → ↑ ↓ for motion, release to stop.
+ * -------------------------------------------------------
+ * X-axis : STEP = 2, DIR = 5, EN = 8
+ * Y-axis : STEP = 3, DIR = 6, EN = 9
+ */
+
 #include <Arduino.h>
+#include <AccelStepper.h>
 
-// --- X-Axis Pins ---
-const int stepX = 2;     // STEP pin for X-axis
-const int dirX  = 5;     // DIR  pin for X-axis
-const int enXPin = 8;    // ENABLE pin for X-axis
+// ── Pin assignments ───────────────────────────────────────
+constexpr uint8_t STEP_X = 2, DIR_X = 5, EN_X = 8;
+constexpr uint8_t STEP_Y = 3, DIR_Y = 6, EN_Y = 9;
 
-// --- Y-Axis Pins ---
-const int stepY = 3;     // STEP pin for Y-axis
-const int dirY  = 6;     // DIR  pin for Y-axis
-const int enYPin = 9;    // ENABLE pin for Y-axis
+// ── Motion parameters ─────────────────────────────────────
+constexpr uint16_t MICRO_STEPS      = 4;           // A4988/DRV8825 jumpers
+constexpr uint32_t STEPS_PER_REV    = 200UL * MICRO_STEPS;
 
-// --- Motor Configuration ---
-// Tweak these for your hardware and desired movement
-const unsigned int stepDelayX = 3000;            // µs between step pulses
-const unsigned int stepDelayY = 1500;            // µs between step pulses
-const int stepsPerRevolution = 200 * 4;  // Set to match your driver’s microstepping (e.g., 200 steps/rev * 4x microstepping)
-const int turnAmountX = stepsPerRevolution / 64; // Move 1/64 of a full rotation (5.625°) per key press
-const int turnAmountY = stepsPerRevolution / 64; // Move 1/64 of a full rotation (5.625°) per key press
+constexpr float    MAX_SPEED_X      = 800.0;       // steps / s
+constexpr float    ACCEL_X          = 400.0;       // steps / s²
+constexpr float    MAX_SPEED_Y      = 1200.0;
+constexpr float    ACCEL_Y          = 600.0;
 
-/**
- * @brief Pulses the X-axis STEP pin once to move one step.
- */
-void singleStepX() {
-  digitalWrite(stepX, HIGH);
-  delayMicroseconds(stepDelayX);
-  digitalWrite(stepX, LOW);
-  delayMicroseconds(stepDelayX);
-}
+// Big “infinite” distance for continuous travel
+constexpr long     CONT_DIST        = 1000000L;    // steps
 
-/**
- * @brief Pulses the Y-axis STEP pin once to move one step.
- */
-void singleStepY() {
-  digitalWrite(stepY, HIGH);
-  delayMicroseconds(stepDelayY);
-  digitalWrite(stepY, LOW);
-  delayMicroseconds(stepDelayY);
-}
+// ── Stepper objects ───────────────────────────────────────
+AccelStepper stepperX(AccelStepper::DRIVER, STEP_X, DIR_X);
+AccelStepper stepperY(AccelStepper::DRIVER, STEP_Y, DIR_Y);
 
-/**
- * @brief Rotates the X-axis motor a given number of steps.
- * @param steps Number of steps to rotate.
- * @param clockwise Direction of rotation (true for clockwise).
- */
-void rotateStepsX(int steps, bool clockwise) {
-  digitalWrite(dirX, clockwise ? HIGH : LOW);
-  for (int i = 0; i < steps; ++i) {
-    singleStepX();
-  }
-}
-
-/**
- * @brief Rotates the Y-axis motor a given number of steps.
- * @param steps Number of steps to rotate.
- * @param clockwise Direction of rotation (true for clockwise).
- */
-void rotateStepsY(int steps, bool clockwise) {
-  digitalWrite(dirY, clockwise ? HIGH : LOW);
-  for (int i = 0; i < steps; ++i) {
-    singleStepY();
-  }
+inline void driversEnable(bool en) {
+  digitalWrite(EN_X, en ? LOW : HIGH);   // LOW = enabled
+  digitalWrite(EN_Y, en ? LOW : HIGH);
 }
 
 void setup() {
-  // --- Initialize Pins ---
-  // X-Axis
-  pinMode(stepX, OUTPUT);
-  pinMode(dirX,  OUTPUT);
-  pinMode(enXPin, OUTPUT);
-  digitalWrite(enXPin, LOW);     // Enable X-axis driver (LOW = enabled for A4988/DRV8825)
+  pinMode(EN_X, OUTPUT); pinMode(EN_Y, OUTPUT);
+  driversEnable(true);
 
-  // Y-Axis
-  pinMode(stepY, OUTPUT);
-  pinMode(dirY,  OUTPUT);
-  pinMode(enYPin, OUTPUT);
-  digitalWrite(enYPin, LOW);     // Enable Y-axis driver
+  stepperX.setMaxSpeed(MAX_SPEED_X);
+  stepperX.setAcceleration(ACCEL_X);
+  stepperY.setMaxSpeed(MAX_SPEED_Y);
+  stepperY.setAcceleration(ACCEL_Y);
 
-  // --- Initialize Serial Communication ---
   Serial.begin(115200);
-  Serial.println(F("Stepper ready")); // Use F() macro to save RAM
+  Serial.println(F("Stepper ready"));
 }
 
+/* ── Helper: start motion toward “infinity” ───────────────── */
+inline void go(AccelStepper& s, int dir) {
+  // keep target far ahead of current position
+  s.moveTo(s.currentPosition() + dir * CONT_DIST);
+}
 
+/* ── Main loop ────────────────────────────────────────────── */
 void loop() {
-  // Check if there is data available to read from the serial port
   if (Serial.available()) {
-    // Read the incoming character
-    char cmd = Serial.read();
+    switch (Serial.read()) {
+      /*  X-axis  */
+      case 'L':  go(stepperX, +1);      break;  // press ←
+      case 'R':  go(stepperX, -1);      break;  // press →
+      case 'l':  stepperX.stop();       break;  // release ← or →
+      case 'r':  stepperX.stop();       break;
 
-    // Act based on the command received
-    switch (cmd) {
-      case 'l': rotateStepsX(turnAmountX, true);  break;  // Left arrow: X-axis forward
-      case 'r': rotateStepsX(turnAmountX, false); break;  // Right arrow: X-axis backward
-      case 'u': rotateStepsY(turnAmountY, false); break;  // Up arrow: Y-axis left
-      case 'd': rotateStepsY(turnAmountY, true);  break;  // Down arrow: Y-axis right
-
-      // You can add more cases for different movements
-      // case 'U': rotateStepsX(stepsPerRevolution, true);  break;
-      
-      default:
-        // Ignore any other characters
-        break;
+      /*  Y-axis  */
+      case 'U':  go(stepperY, -1);      break;  // press ↑
+      case 'D':  go(stepperY, +1);      break;  // press ↓
+      case 'u':  stepperY.stop();       break;  // release ↑ or ↓
+      case 'd':  stepperY.stop();       break;
     }
   }
+
+  // keep steppers running / accelerating / decelerating
+  stepperX.run();
+  stepperY.run();
 }
