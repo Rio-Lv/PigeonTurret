@@ -5,8 +5,7 @@ release to stop. Esc quits.
 import argparse, sys, time, serial
 from serial.tools import list_ports
 from pynput import keyboard
-import os 
-import subprocess
+
 
 # # -- initiate camera streaming --
 # try:
