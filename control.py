@@ -9,7 +9,7 @@ import socket
 from pynput import keyboard
 
 # TCP configuration
-PI_IP = "192.168.1.XXX"  # Replace with your Pi's IP
+PI_IP = "192.168.1.120"  # Replace with your Pi's IP
 PORT = 4444
 
 # Initialize socket

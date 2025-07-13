@@ -10,25 +10,53 @@ HOST = "0.0.0.0"  # Listen on all interfaces
 PORT = 4444
 BAUD_RATE = 115200
 
-# Auto-detect Arduino port
+# Auto-detect Arduino port (compatible with both tuple and object returns)
 def auto_port():
     for p in list_ports.comports():
-        if 'Arduino' in p.description or 'CH340' in p.description:
-            return p.device
+        # Handle both tuple (old PySerial) and object (new PySerial) formats
+        if isinstance(p, tuple):
+            # Old format: (port, description, hwid)
+            port_name, description, _ = p
+        else:
+            # New format: object with attributes
+            port_name = p.device
+            description = p.description
+        
+        # Check if it's an Arduino
+        if description and ('Arduino' in description or 'CH340' in description):
+            return port_name
     return None
 
-# Set up serial connection
+print("[*] Scanning for Arduino...")
 serial_port = auto_port()
 if not serial_port:
-    print("❌  No Arduino found! Please connect Arduino")
-    serial_port = "/dev/ttyACM0"  # Default fallback
-
-print("[*] Using serial port: {}".format(serial_port))
+    print("❌  No Arduino found! Trying common ports...")
+    # Try common ports as fallback
+    common_ports = ['/dev/ttyACM0', '/dev/ttyACM1', '/dev/ttyUSB0', '/dev/ttyUSB1']
+    for port in common_ports:
+        try:
+            # Try to open to see if it exists
+            ser_test = serial.Serial(port, BAUD_RATE)
+            ser_test.close()
+            serial_port = port
+            print("[*] Using fallback port: {}".format(serial_port))
+            break
+        except:
+            pass
+    if not serial_port:
+        print("❌  No serial port available. Please connect Arduino")
+        sys.exit(1)
+else:
+    print("[*] Found Arduino at: {}".format(serial_port))
 
 try:
     ser = serial.Serial(serial_port, BAUD_RATE, timeout=1)
     time.sleep(2)  # Allow Arduino to reset
     print("[*] Serial connected @ {} baud".format(BAUD_RATE))
+    
+    # Flush any initial data
+    ser.flushInput()
+    ser.flushOutput()
 except serial.SerialException as e:
     print("❌  Serial error: {}".format(e))
     ser = None
@@ -53,7 +81,7 @@ try:
                     print("[-] Connection closed by client")
                     break
                     
-                command = data.decode('utf-8')
+                command = data.decode('utf-8').strip()
                 print("Received command: {0}".format(command))
                 
                 # Forward command to Arduino if serial is available
