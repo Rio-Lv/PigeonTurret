@@ -85,7 +85,7 @@ try:
                 print("Received command: {0}".format(command))
                 
                 # Forward command to Arduino if serial is available
-                if ser and ser.is_open:
+                if ser and ser.isOpen():  # Changed to isOpen()
                     # Map state commands to single-letter commands
                     if command == "{dx:1, dy:0}":
                         ser.write(b'R')
@@ -128,6 +128,6 @@ except KeyboardInterrupt:
 
 finally:
     s.close()
-    if ser and ser.is_open:
+    if ser and ser.isOpen():  # Changed to isOpen()
         ser.close()
     print("[*] Server shutdown complete")
