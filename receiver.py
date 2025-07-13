@@ -72,6 +72,7 @@ except serial.SerialException as e:
 s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
+# FIXED VERSION WITH PROPER COMMAND HANDLING
 try:
     s.bind((HOST, PORT))
     s.listen(5)
@@ -81,6 +82,8 @@ try:
         try:
             conn, addr = s.accept()
             print("[+] New connection from {0}:{1}".format(addr[0], addr[1]))
+            # Use a buffer for incomplete commands
+            buffer = b''
             
             while True:
                 data = conn.recv(1024)
@@ -88,19 +91,26 @@ try:
                     print("[-] Connection closed by client")
                     break
                     
-                # Handle Python 3.4 string conversion
-                if isinstance(data, bytes):
-                    command = data.decode('utf-8').strip()
-                else:
-                    command = str(data).strip()
+                buffer += data
                 
-                print("Received command: {0}".format(command))
-                
-                # Forward command to Arduino if serial is available
-                if ser and ser.isOpen():  # Use isOpen() for Python 3.4 compatibility
-                    # Send command with newline
-                    ser.write((command + '\n').encode('utf-8'))
-                    print("Forwarded to Arduino: {0}".format(command))
+                # Process complete commands (ending with newline)
+                while b'\n' in buffer:
+                    line, buffer = buffer.split(b'\n', 1)
+                    
+                    # Handle Python 3.4 string conversion
+                    try:
+                        command = line.decode('utf-8').strip()
+                    except UnicodeDecodeError:
+                        command = str(line).strip()
+                    
+                    if command:
+                        print("Received command: {0}".format(command))
+                        
+                        # Forward command to Arduino if serial is available
+                        if ser and ser.isOpen():
+                            # Send command with newline
+                            ser.write((command + '\n').encode('utf-8'))
+                            print("Forwarded to Arduino: {0}".format(command))
                 
         except socket.error as e:
             if e.errno == 104:  # Connection reset by peer

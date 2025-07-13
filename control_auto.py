@@ -12,7 +12,7 @@ import os
 # ======== CONFIGURATION ========
 COMMAND_INTERVAL = 0.1  # Seconds between command sends
 MODEL_PATH = "yolov8n.pt"      # Path to YOLO model
-IMAGE_PATH = "Inference/livefeed/image.jpg"  # Path to input image
+IMAGE_PATH = "images/image.jpg"  # Path to input image
 TARGET_CLASSES = ["pigeon", "bird", "person", "human"]  # Classes to detect
 PI_IP = "192.168.1.120"        # Raspberry Pi's IP
 PORT = 4444
@@ -49,7 +49,7 @@ def connect_to_pi():
 def send_command(dx, dy):
     """Send movement command to Raspberry Pi"""
     # Format: dx,dy,speed
-    command_str = f"{dx:.3f},{dy:.3f},{SPEED_FACTOR:.2f}"
+    command_str = f"{dx:.3f},{dy:.3f},{SPEED_FACTOR:.2f}\n"
     try:
         sock.sendall(command_str.encode())
         print("📤 Sent: {}".format(command_str))

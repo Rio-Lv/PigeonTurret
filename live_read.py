@@ -3,7 +3,7 @@ import time
 import os
 
 # Create output directory if it doesn't exist
-output_dir = 'livefeed'
+output_dir = 'images'
 os.makedirs(output_dir, exist_ok=True)
 
 # TCP stream URL

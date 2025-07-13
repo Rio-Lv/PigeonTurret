@@ -1,5 +1,6 @@
 import subprocess
 
+print("[*] Starting video transmission...")
 COMMAND = (
     "raspivid -w 256 -h 256 -vf -fps 10  -t 0 -o - | nc -l -k -p 3333"
 )  # Start the camera streaming command
