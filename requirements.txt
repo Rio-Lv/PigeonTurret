@@ -1,2 +1,4 @@
 pyinput
 pyserial
+ultralytics
+opencv-python
