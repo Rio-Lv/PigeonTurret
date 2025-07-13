@@ -1,9 +1,10 @@
 /**
- * Continuous two-axis control with AccelStepper
- * Hold ← → ↑ ↓ for motion, release to stop.
- * -------------------------------------------------------
- * X-axis : STEP = 2, DIR = 5, EN = 8
- * Y-axis : STEP = 3, DIR = 6, EN = 9
+ * Smooth two-axis stepper control with numeric velocity input
+ * Accepts commands in format: "dx,dy,speed"
+ * Example: "0.5,-0.3,0.8" = 50% right, 30% down at 80% speed
+ * ----------------------------------------------------------
+ * X-axis: STEP = 2, DIR = 5, EN = 8
+ * Y-axis: STEP = 3, DIR = 6, EN = 9
  */
 
 #include <Arduino.h>
@@ -14,64 +15,107 @@ constexpr uint8_t STEP_X = 2, DIR_X = 5, EN_X = 8;
 constexpr uint8_t STEP_Y = 3, DIR_Y = 6, EN_Y = 9;
 
 // ── Motion parameters ─────────────────────────────────────
-constexpr uint16_t MICRO_STEPS      = 4;           // A4988/DRV8825 jumpers
+constexpr uint16_t MICRO_STEPS      = 4;
 constexpr uint32_t STEPS_PER_REV    = 200UL * MICRO_STEPS;
 
-constexpr float    MAX_SPEED_X      = 800.0;       // steps / s
-constexpr float    ACCEL_X          = 400.0;       // steps / s²
-constexpr float    MAX_SPEED_Y      = 1200.0;
-constexpr float    ACCEL_Y          = 600.0;
+// Base speeds (steps/sec)
+constexpr float MAX_SPEED_X         = 800.0;
+constexpr float MAX_SPEED_Y         = 1200.0;
 
-// Big “infinite” distance for continuous travel
-constexpr long     CONT_DIST        = 1000000L;    // steps
+// Acceleration (steps/sec²)
+constexpr float ACCEL_X             = 1200.0;
+constexpr float ACCEL_Y             = 1800.0;
+
+// Deadzone to prevent micro-jitters
+constexpr float DEADZONE            = 0.05;
 
 // ── Stepper objects ───────────────────────────────────────
 AccelStepper stepperX(AccelStepper::DRIVER, STEP_X, DIR_X);
 AccelStepper stepperY(AccelStepper::DRIVER, STEP_Y, DIR_Y);
 
+// Command parsing
+const uint8_t COMMAND_BUFFER_SIZE = 32;
+char commandBuffer[COMMAND_BUFFER_SIZE];
+uint8_t bufferIndex = 0;
+
+// Velocity targets (-1.0 to 1.0)
+float targetVelX = 0;
+float targetVelY = 0;
+float speedFactor = 1.0;  // Global speed multiplier
+
 inline void driversEnable(bool en) {
-  digitalWrite(EN_X, en ? LOW : HIGH);   // LOW = enabled
+  digitalWrite(EN_X, en ? LOW : HIGH);
   digitalWrite(EN_Y, en ? LOW : HIGH);
 }
 
 void setup() {
-  pinMode(EN_X, OUTPUT); pinMode(EN_Y, OUTPUT);
+  pinMode(EN_X, OUTPUT); 
+  pinMode(EN_Y, OUTPUT);
   driversEnable(true);
 
+  // Configure steppers with smooth acceleration
   stepperX.setMaxSpeed(MAX_SPEED_X);
   stepperX.setAcceleration(ACCEL_X);
+  
   stepperY.setMaxSpeed(MAX_SPEED_Y);
   stepperY.setAcceleration(ACCEL_Y);
 
   Serial.begin(115200);
-  Serial.println(F("Stepper ready"));
+  Serial.println(F("Stepper controller ready"));
+  Serial.println(F("Send commands as: dx,dy,speed"));
 }
 
-/* ── Helper: start motion toward “infinity” ───────────────── */
-inline void go(AccelStepper& s, int dir) {
-  // keep target far ahead of current position
-  s.moveTo(s.currentPosition() + dir * CONT_DIST);
+// Parse incoming velocity commands
+void parseCommand(const char* command) {
+  char* endPtr;
+  
+  // Parse dx
+  targetVelX = strtof(command, &endPtr);
+  if (*endPtr != ',') return;
+  
+  // Parse dy
+  targetVelY = strtof(endPtr + 1, &endPtr);
+  if (*endPtr != ',') return;
+  
+  // Parse optional speed factor
+  speedFactor = strtof(endPtr + 1, &endPtr);
+  speedFactor = constrain(speedFactor, 0.1, 1.0);
+  
+  // Apply deadzone to prevent micro-jitters
+  if (fabs(targetVelX) < DEADZONE) targetVelX = 0;
+  if (fabs(targetVelY) < DEADZONE) targetVelY = 0;
+  
+  // Apply speed limits
+  float velX = constrain(targetVelX, -1.0, 1.0) * speedFactor;
+  float velY = constrain(targetVelY, -1.0, 1.0) * speedFactor;
+  
+  // Calculate actual speeds
+  float actualSpeedX = velX * MAX_SPEED_X;
+  float actualSpeedY = velY * MAX_SPEED_Y;
+  
+  // Set new speeds with acceleration control
+  stepperX.setSpeed(actualSpeedX);
+  stepperY.setSpeed(actualSpeedY);
 }
 
-/* ── Main loop ────────────────────────────────────────────── */
 void loop() {
-  if (Serial.available()) {
-    switch (Serial.read()) {
-      /*  X-axis  */
-      case 'L':  go(stepperX, +1);      break;  // press ←
-      case 'R':  go(stepperX, -1);      break;  // press →
-      case 'l':  stepperX.stop();       break;  // release ← or →
-      case 'r':  stepperX.stop();       break;
-
-      /*  Y-axis  */
-      case 'U':  go(stepperY, -1);      break;  // press ↑
-      case 'D':  go(stepperY, +1);      break;  // press ↓
-      case 'u':  stepperY.stop();       break;  // release ↑ or ↓
-      case 'd':  stepperY.stop();       break;
+  // Read serial commands
+  while (Serial.available()) {
+    char c = Serial.read();
+    
+    if (c == '\n' || c == '\r') {
+      if (bufferIndex > 0) {
+        commandBuffer[bufferIndex] = '\0';  // Null-terminate
+        parseCommand(commandBuffer);
+        bufferIndex = 0;
+      }
+    } 
+    else if (bufferIndex < COMMAND_BUFFER_SIZE - 1) {
+      commandBuffer[bufferIndex++] = c;
     }
   }
-
-  // keep steppers running / accelerating / decelerating
-  stepperX.run();
-  stepperY.run();
+  
+  // Run steppers at constant speed with acceleration control
+  stepperX.runSpeedToPosition();
+  stepperY.runSpeedToPosition();
 }

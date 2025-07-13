@@ -10,15 +10,12 @@ HOST = "0.0.0.0"  # Listen on all interfaces
 PORT = 4444
 BAUD_RATE = 115200
 
-# Auto-detect Arduino port (compatible with both tuple and object returns)
+# Auto-detect Arduino port
 def auto_port():
     for p in list_ports.comports():
-        # Handle both tuple (old PySerial) and object (new PySerial) formats
         if isinstance(p, tuple):
-            # Old format: (port, description, hwid)
             port_name, description, _ = p
         else:
-            # New format: object with attributes
             port_name = p.device
             description = p.description
         
@@ -31,11 +28,9 @@ print("[*] Scanning for Arduino...")
 serial_port = auto_port()
 if not serial_port:
     print("❌  No Arduino found! Trying common ports...")
-    # Try common ports as fallback
     common_ports = ['/dev/ttyACM0', '/dev/ttyACM1', '/dev/ttyUSB0', '/dev/ttyUSB1']
     for port in common_ports:
         try:
-            # Try to open to see if it exists
             ser_test = serial.Serial(port, BAUD_RATE)
             ser_test.close()
             serial_port = port
@@ -85,22 +80,10 @@ try:
                 print("Received command: {0}".format(command))
                 
                 # Forward command to Arduino if serial is available
-                if ser and ser.isOpen():  # Changed to isOpen()
-                    # Map state commands to single-letter commands
-                    if command == "{dx:1, dy:0}":
-                        ser.write(b'R')
-                    elif command == "{dx:-1, dy:0}":
-                        ser.write(b'L')
-                    elif command == "{dx:0, dy:1}":
-                        ser.write(b'D')
-                    elif command == "{dx:0, dy:-1}":
-                        ser.write(b'U')
-                    elif command == "{dx:0, dy:0}":
-                        # Stop command - release all
-                        ser.write(b'l')
-                        ser.write(b'r')
-                        ser.write(b'u')
-                        ser.write(b'd')
+                if ser and ser.is_open:
+                    # Send command with newline
+                    ser.write((command + '\n').encode())
+                    print(f"Forwarded to Arduino: {command}")
                 
         except socket.error as e:
             if e.errno == 104:  # Connection reset by peer
@@ -128,6 +111,6 @@ except KeyboardInterrupt:
 
 finally:
     s.close()
-    if ser and ser.isOpen():  # Changed to isOpen()
+    if ser and ser.is_open:
         ser.close()
     print("[*] Server shutdown complete")

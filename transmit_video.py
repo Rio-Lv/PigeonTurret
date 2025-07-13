@@ -1,7 +1,7 @@
 import subprocess
 
 COMMAND = (
-    "raspivid -w 640 -h 480 -vf -fps 30 -t 0 -o - | nc -l -k -p 3333"
+    "raspivid -w 256 -h 256 -vf -fps 10  -t 0 -o - | nc -l -k -p 3333"
 )  # Start the camera streaming command
 
 # Blocks until the shell command exits
