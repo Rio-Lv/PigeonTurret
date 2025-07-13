@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""
-control.py Hold the arrow keys for continuous motion,
-release to stop.  Esc quits.
-"""
+# """
+# control.py Hold the arrow keys for continuous motion,
+# release to stop.  Esc quits.
+# """
 import argparse, sys, time, serial
 from serial.tools import list_ports
 from pynput import keyboard
