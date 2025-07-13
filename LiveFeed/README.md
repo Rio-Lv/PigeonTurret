@@ -14,8 +14,12 @@ raspistill -f -vf -t 100000 -o preview.jpg
 
 for video streaming, use:
 
+on PI
 ```bash
-# one line
-raspivid -t 0 -vf -w 640 -h 480 -fps 24 -b 2000000 -o - \
-  | nc -k -l 3333
+raspivid -w 640 -h 480 -vf -q 85 -t 0 -tl 100 -o - | nc -l -k 0 -p 3333
+```
+
+on PC
+```bash
+ffplay -fflags nobuffer -f mjpeg tcp://<pi-ip>:3333
 ```

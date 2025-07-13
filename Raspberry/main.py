@@ -1,11 +1,19 @@
 #!/usr/bin/env python3
 """
-control.py – Hold the arrow keys for continuous motion,
+control.py Hold the arrow keys for continuous motion,
 release to stop.  Esc quits.
 """
 import argparse, sys, time, serial
 from serial.tools import list_ports
 from pynput import keyboard
+import os 
+
+# -- initiate camera streaming -- 
+try: 
+    os.system("raspivid -w 640 -h 480 -vf -q 85 -t 0 -tl 100 -o - | nc -l -k 0 -p 3333")
+except Exception as e:
+    sys.exit(f"❌  Failed to start camera streaming: {e}")
+    
 
 # ── Helper: auto-detect Arduino port ───────────────────────
 def auto_port():
