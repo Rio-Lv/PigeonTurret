@@ -7,13 +7,14 @@ import argparse, sys, time, serial
 from serial.tools import list_ports
 from pynput import keyboard
 import os 
+import subprocess
 
-# -- initiate camera streaming -- 
-try: 
-    os.system("raspivid -w 640 -h 480 -vf -q 85 -t 0 -tl 100 -o - | nc -l -k 0 -p 3333")
+# -- initiate camera streaming --
+try:
+    subprocess.Popen("raspivid -w 640 -h 480 -vf -q 85 -t 0 -tl 100 -o - | nc -l -k 0 -p 3333", shell=True)
 except Exception as e:
-    sys.exit(f"❌  Failed to start camera streaming: {e}")
-    
+    sys.exit(f"Failed to start camera streaming: {e}")
+
 
 # ── Helper: auto-detect Arduino port ───────────────────────
 def auto_port():
