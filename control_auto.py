@@ -14,7 +14,7 @@ STREAM_URL = "tcp://192.168.1.120:3333"  # Video stream from Pi
 PI_IP = "192.168.1.120"                   # Command IP for Pi
 PORT = 4444                               # Command port for Pi
 COMMAND_INTERVAL = 0.05                    # Seconds between commands
-FRAME_SKIP = 2                          # Process every 10th frame (adjust as needed)
+FRAME_SKIP = 5                             # Process every 5th frame (adjust as needed)
 
 # --- AI and Vision ---
 MODEL_PATH = "yolov8n.pt"                 # Path to YOLO model
