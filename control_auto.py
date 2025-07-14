@@ -1,4 +1,4 @@
-# realtime_control.py - Low-latency autonomous object centering
+# realtime_control.py - Low-latency autonomous object centering with frame skipping
 import argparse
 import sys
 import time
@@ -7,25 +7,26 @@ import cv2
 import numpy as np
 from pynput import keyboard
 from ultralytics import YOLO
-import os
 
 # ======== CONFIGURATION ========
 # --- Stream and Control ---
-STREAM_URL = "tcp://192.168.1.120:3333" # Video stream from Pi
-PI_IP = "192.168.1.120"                # Command IP for Pi
-PORT = 4444                            # Command port for Pi
-COMMAND_INTERVAL = 0.2                 # Seconds between commands (reduced for lower latency)
+STREAM_URL = "tcp://192.168.1.120:3333"  # Video stream from Pi
+PI_IP = "192.168.1.120"                   # Command IP for Pi
+PORT = 4444                               # Command port for Pi
+COMMAND_INTERVAL = 0.2                    # Seconds between commands
+FRAME_SKIP = 10                            # Process every 10th frame (adjust as needed)
 
 # --- AI and Vision ---
-MODEL_PATH = "yolov8n.pt"              # Path to YOLO model
-TARGET_CLASSES = ["pigeon", "bird", "person", "human"] # Classes to detect
-DEADZONE_PERCENT = 0.1                 # 10% deadzone around center
-SPEED_FACTOR = 0.2                     # Global speed multiplier (0.1-1.0)
+MODEL_PATH = "yolov8n.pt"                 # Path to YOLO model
+TARGET_CLASSES = ["pigeon", "bird", "person", "human"]  # Classes to detect
+DEADZONE_PERCENT = 0.1                    # 10% deadzone around center
+SPEED_FACTOR = 0.2                        # Global speed multiplier (0.1-1.0)
 # ===============================
 
 # Initialize YOLO model
 try:
     model = YOLO(MODEL_PATH)
+    print(f"✅ Loaded YOLO model: {MODEL_PATH}")
 except Exception as e:
     print(f"❌ Error loading YOLO model: {e}")
     sys.exit(1)
@@ -40,13 +41,13 @@ def connect_to_pi_command():
     """Establish command connection to Raspberry Pi"""
     try:
         sock.connect((PI_IP, PORT))
-        print(f"✅  Command socket connected to {PI_IP}:{PORT}")
+        print(f"✅ Command socket connected to {PI_IP}:{PORT}")
         return True
     except ConnectionRefusedError:
-        print("❌  Command connection refused. Is the receiver script running on the Pi?")
+        print("❌ Command connection refused. Is the receiver script running on the Pi?")
         return False
     except OSError as e:
-        print(f"❌  Command connection error: {e}")
+        print(f"❌ Command connection error: {e}")
         return False
 
 def send_command(dx, dy):
@@ -54,9 +55,9 @@ def send_command(dx, dy):
     command_str = f"{dx:.3f},{dy:.3f},{SPEED_FACTOR:.2f}\n"
     try:
         sock.sendall(command_str.encode())
-        print(f"📤 Sent: {command_str.strip()}") # Uncomment for verbose command logging
+        print(f"📤 Sent: {command_str.strip()}")  # Uncomment for verbose command logging
     except (BrokenPipeError, ConnectionResetError, OSError):
-        print("❌  Connection lost! Attempting to reconnect...")
+        print("❌ Connection lost! Attempting to reconnect...")
         if connect_to_pi_command():
             sock.sendall(command_str.encode())
             print(f"📤 Re-sent: {command_str.strip()}")
@@ -104,7 +105,12 @@ def find_closest_target(results, image_shape):
     return closest_target_info
 
 class RealTimeControl:
-    def __init__(self):
+    def __init__(self, frame_skip=2):
+        self.frame_skip = max(1, frame_skip)  # Ensure minimum value is 1
+        self.frame_counter = 0
+        self.last_target = None
+        self.last_dx = 0
+        self.last_dy = 0
         self.stop_requested = False
         self.last_command_time = 0
         self.listener = keyboard.Listener(on_press=self.on_press)
@@ -117,9 +123,10 @@ class RealTimeControl:
             return False  # Stop listener
 
     def run(self):
-        """Main control loop"""
+        """Main control loop with frame skipping"""
         print(f"🚀 Starting real-time autonomous centering...")
         print(f"Press 'q' in the window to exit or ESC for emergency stop.")
+        print(f"Frame skipping: Processing every {self.frame_skip} frames")
         
         self.listener.start()
 
@@ -131,7 +138,10 @@ class RealTimeControl:
 
         try:
             while not self.stop_requested:
-                # 1. Read Frame Directly from Stream
+                self.frame_counter += 1
+                skip_frame = self.frame_counter % self.frame_skip != 0
+
+                # 1. Read Frame
                 ret, frame = cap.read()
                 if not ret:
                     print("⚠️ Frame read error. Attempting to reconnect stream...")
@@ -140,43 +150,61 @@ class RealTimeControl:
                     cap = cv2.VideoCapture(STREAM_URL, cv2.CAP_FFMPEG)
                     continue
 
-                # 2. Run Inference on the Live Frame
-                results = model(frame, verbose=False)
-                closest_target = find_closest_target(results, frame.shape)
-                dx, dy = 0, 0
+                # 2. Process Frame Conditionally
+                current_target = None
+                if not skip_frame:
+                    # Process frame with YOLO
+                    results = model(frame, verbose=False)
+                    current_target = find_closest_target(results, frame.shape)
+                    self.last_target = current_target  # Cache for skipped frames
 
-                # 3. Process and Draw Results
-                if closest_target:
-                    # Calculate movement based on the closest target
-                    dx, dy = calculate_movement(frame.shape, closest_target["center"])
+                    if current_target:
+                        self.last_dx, self.last_dy = calculate_movement(
+                            frame.shape, current_target["center"])
+                    else:
+                        self.last_dx, self.last_dy = 0, 0
+                else:
+                    # Use cached data from last processed frame
+                    current_target = self.last_target
 
-                    # Draw box for the closest target
-                    x1, y1, x2, y2 = closest_target["box"]
-                    color = (0, 255, 0) # Green for the locked target
+                # 3. Visual Feedback
+                if current_target:
+                    # Determine box color (green for fresh, blue for cached)
+                    color = (0, 255, 0) if not skip_frame else (255, 0, 0)
+                    vector_color = (0, 255, 255) if not skip_frame else (255, 255, 0)
+                    label_suffix = "" if not skip_frame else " (cached)"
+                    
+                    x1, y1, x2, y2 = current_target["box"]
                     cv2.rectangle(frame, (x1, y1), (x2, y2), color, 3)
-                    label = f"{closest_target['class_name']} {closest_target['confidence']:.2f}"
-                    cv2.putText(frame, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
-
+                    label = f"{current_target['class_name']}{label_suffix}"
+                    cv2.putText(frame, label, (x1, y1 - 10), 
+                               cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
+                    
                     # Draw movement vector
                     h, w = frame.shape[:2]
                     center_x, center_y = w // 2, h // 2
-                    end_x = int(center_x + dx * w / 4)
-                    end_y = int(center_y + dy * h / 4)
-                    cv2.arrowedLine(frame, (center_x, center_y), (end_x, end_y), (0, 255, 255), 3)
+                    end_x = int(center_x + self.last_dx * w / 4)
+                    end_y = int(center_y + self.last_dy * h / 4)
+                    cv2.arrowedLine(frame, (center_x, center_y), (end_x, end_y), 
+                                  vector_color, 3)
 
-                # 4. Send Command at a Regular Interval
+                # 4. Send Commands (use last values even for skipped frames)
                 current_time = time.time()
                 if current_time - self.last_command_time >= COMMAND_INTERVAL:
-                    send_command(dx, dy)
+                    send_command(self.last_dx, self.last_dy)
                     self.last_command_time = current_time
 
-                # 5. Display Information and Frame
-                info_text = f"Targeting: {'Yes' if closest_target else 'No'} | Move: dx={dx:.2f}, dy={dy:.2f}"
-                cv2.putText(frame, info_text, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
+                # 5. Display Information
+                status = f"Frame: {self.frame_counter} (Skipped)" if skip_frame else f"Frame: {self.frame_counter}"
+                target_status = 'Yes' if current_target else 'No'
+                info_text = f"{status} | Target: {target_status} | Move: dx={self.last_dx:.2f}, dy={self.last_dy:.2f}"
+                cv2.putText(frame, info_text, (10, 30), 
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
                 cv2.imshow(window_name, frame)
 
                 # Check for exit keys
-                if cv2.waitKey(1) & 0xFF == ord('q'):
+                key = cv2.waitKey(1) & 0xFF
+                if key == ord('q'):
                     break
                 if cv2.getWindowProperty(window_name, cv2.WND_PROP_VISIBLE) < 1:
                     break
@@ -186,7 +214,8 @@ class RealTimeControl:
     def cleanup(self, cap):
         """Gracefully shut down all connections and resources"""
         print("\nCleaning up...")
-        send_command(0, 0) # Send a final stop command
+        send_command(0, 0)  # Send a final stop command
+        time.sleep(0.5)  # Ensure stop command is sent
         sock.close()
         cap.release()
         cv2.destroyAllWindows()
@@ -194,20 +223,23 @@ class RealTimeControl:
         print("🔌 Connections closed. Clean exit.")
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='Real-time autonomous object centering.')
+    parser = argparse.ArgumentParser(description='Real-time autonomous object centering with frame skipping.')
     parser.add_argument('--ip', default=PI_IP, help='Raspberry Pi IP for commands.')
     parser.add_argument('--stream', default=STREAM_URL, help='URL of the video stream.')
     parser.add_argument('--model', default=MODEL_PATH, help='Path to the YOLO model.')
     parser.add_argument('--speed', type=float, default=SPEED_FACTOR, help='Speed factor (0.1-1.0).')
+    parser.add_argument('--skip', type=int, default=FRAME_SKIP, 
+                       help='Process every N-th frame (default: 2, higher = faster)')
     args = parser.parse_args()
 
     PI_IP = args.ip
     STREAM_URL = args.stream
     MODEL_PATH = args.model
     SPEED_FACTOR = args.speed
+    FRAME_SKIP = max(1, args.skip)  # Ensure minimum value is 1
 
     if not connect_to_pi_command():
         sys.exit(1)
 
-    controller = RealTimeControl()
+    controller = RealTimeControl(frame_skip=FRAME_SKIP)
     controller.run()
