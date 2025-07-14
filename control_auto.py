@@ -13,14 +13,14 @@ from ultralytics import YOLO
 STREAM_URL = "tcp://192.168.1.120:3333"  # Video stream from Pi
 PI_IP = "192.168.1.120"                   # Command IP for Pi
 PORT = 4444                               # Command port for Pi
-COMMAND_INTERVAL = 0.2                    # Seconds between commands
-FRAME_SKIP = 10                            # Process every 10th frame (adjust as needed)
+COMMAND_INTERVAL = 0.05                    # Seconds between commands
+FRAME_SKIP = 2                          # Process every 10th frame (adjust as needed)
 
 # --- AI and Vision ---
 MODEL_PATH = "yolov8n.pt"                 # Path to YOLO model
-TARGET_CLASSES = ["pigeon", "bird", "person", "human"]  # Classes to detect
+TARGET_CLASSES = ["pigeon", "bird", "cup", "mug", "glass"]  # Classes to detect
 DEADZONE_PERCENT = 0.1                    # 10% deadzone around center
-SPEED_FACTOR = 0.2                        # Global speed multiplier (0.1-1.0)
+SPEED_FACTOR = 0.1                        # Global speed multiplier (0.1-1.0)
 # ===============================
 
 # Initialize YOLO model
@@ -76,7 +76,7 @@ def calculate_movement(image_shape, target_center):
     dy = 0 if abs(dy) < DEADZONE_PERCENT else dy
 
     # Clamp to [-1, 1]
-    return max(-1.0, min(1.0, dx)), max(-1.0, min(1.0, dy))
+    return -max(-1.0, min(1.0, dx)), max(-0.5, min(0.5, dy))
 
 def find_closest_target(results, image_shape):
     """Find the target closest to the image center"""
