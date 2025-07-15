@@ -1,47 +1,70 @@
 #include <Arduino.h>
 
-const int stepX = 2;     // STEP pin
-const int dirX  = 5;     // DIR  pin
-const int enPin = 8;     // ENABLE pin
+/* -------- Pin assignment -------- */
+/*  X‑axis */
+const int stepX = 2;   // STEP
+const int dirX  = 5;   // DIR
+/*  Y‑axis */
+const int stepY = 3;   // STEP
+const int dirY  = 6;   // DIR
 
-// Tweak these for your hardware
-const int stepDelay = 1000;              // µs between rising edges
-const int stepsPerRevolution = 200 * 4;  // matches your driver’s µstep mode
-const int quarterTurn = stepsPerRevolution / 4; // 90° worth of steps
+/* Enable (shared) */
+const int enPin = 8;   // ENABLE  (LOW = on, HIGH = off)
 
-void singleStep() {
-  digitalWrite(stepX, HIGH);
+/* -------- Motion parameters -------- */
+const int stepDelay = 400;               // µs between rising edges
+const int stepsPerRev = 200 * 8;         // match your driver’s µstep mode
+const int quarterTurn = stepsPerRev / 4; // 90° move
+
+/* -------- Helper functions -------- */
+void singleStep(int stepPin)
+{
+  digitalWrite(stepPin, HIGH);
   delayMicroseconds(stepDelay);
-  digitalWrite(stepX, LOW);
+  digitalWrite(stepPin, LOW);
   delayMicroseconds(stepDelay);
 }
 
-void rotateSteps(int steps, bool clockwise) {
-  digitalWrite(dirX, clockwise ? HIGH : LOW);
-  for (int i = 0; i < steps; ++i) singleStep();
+void rotateSteps(int stepPin, int dirPin, int steps, bool clockwise)
+{
+  digitalWrite(dirPin, clockwise ? HIGH : LOW);
+  for (int i = 0; i < steps; ++i) singleStep(stepPin);
 }
 
-void setup() {
+/* -------- Arduino lifecycle -------- */
+void setup()
+{
   pinMode(stepX, OUTPUT);
   pinMode(dirX,  OUTPUT);
+  pinMode(stepY, OUTPUT);
+  pinMode(dirY,  OUTPUT);
   pinMode(enPin, OUTPUT);
-  digitalWrite(enPin, LOW);     // enable driver
+
+  digitalWrite(enPin, LOW);   // enable both drivers
 
   Serial.begin(115200);
   Serial.println(F("Stepper ready"));
 }
 
-void loop() {
-  if (Serial.available()) {
-    char cmd = Serial.read();
+void loop()
+{
+  if (!Serial.available()) return;
 
-    switch (cmd) {
-      case 'u': rotateSteps(quarterTurn, true);  break;  // ↑  pressed
-      case 'd': rotateSteps(quarterTurn, false); break;  // ↓  pressed
-      // Add more cases if you want finer or coarser moves:
-      // case 'U': rotateSteps(stepsPerRevolution, true);  break;   // full rev CW
-      // case 'D': rotateSteps(stepsPerRevolution, false); break;   // full rev CCW
-      default:   /* ignore anything else */            break;
-    }
+  char cmd = Serial.read();
+  switch (cmd)
+  {
+    /* X‑axis (vertical) */
+    case 'u': rotateSteps(stepX, dirX, quarterTurn, true ); break; // ↑
+    case 'd': rotateSteps(stepX, dirX, quarterTurn, false); break; // ↓
+
+    /* Y‑axis (horizontal) */
+    case 'r': rotateSteps(stepY, dirY, quarterTurn, true ); break; // →
+    case 'l': rotateSteps(stepY, dirY, quarterTurn, false); break; // ←
+
+    /* optional: full‑rev moves, jogs, etc.
+       case 'U': rotateSteps(stepX, dirX, stepsPerRev, true ); break;
+       case 'D': rotateSteps(stepX, dirX, stepsPerRev, false); break;
+    */
+    default: /* ignore anything else */ break;
   }
 }
