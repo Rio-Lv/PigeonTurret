@@ -1,10 +1,11 @@
-# realtime_control.py - Low-latency autonomous object centering with frame skipping
+# realtime_control.py - Low-latency autonomous object centering with a threaded frame reader
 import argparse
 import sys
 import time
 import socket
 import cv2
 import numpy as np
+import threading
 from pynput import keyboard
 from ultralytics import YOLO
 
@@ -13,14 +14,14 @@ from ultralytics import YOLO
 STREAM_URL = "tcp://192.168.1.120:3333"  # Video stream from Pi
 PI_IP = "192.168.1.120"                   # Command IP for Pi
 PORT = 4444                               # Command port for Pi
-COMMAND_INTERVAL = 0.05                    # Seconds between commands
-FRAME_SKIP = 10                             # Process every 10th frame (adjust as needed)
+COMMAND_INTERVAL = 0.1                 # Seconds between commands
+FRAME_SKIP = 5                           # Process every 5th frame (can be lower with threaded reader)
 
 # --- AI and Vision ---
 MODEL_PATH = "yolov8n.pt"                 # Path to YOLO model
 TARGET_CLASSES = ["pigeon", "bird", "cup", "mug", "glass"]  # Classes to detect
 DEADZONE_PERCENT = 0.1                    # 10% deadzone around center
-SPEED_FACTOR = 0.1                        # Global speed multiplier (0.1-1.0)
+SPEED_FACTOR = 1.0                        # Global speed multiplier (0.1-1.0)
 # ===============================
 
 # Initialize YOLO model
@@ -55,7 +56,6 @@ def send_command(dx, dy):
     command_str = f"{dx:.3f},{dy:.3f},{SPEED_FACTOR:.2f}\n"
     try:
         sock.sendall(command_str.encode())
-        print(f"📤 Sent: {command_str.strip()}")  # Uncomment for verbose command logging
     except (BrokenPipeError, ConnectionResetError, OSError):
         print("❌ Connection lost! Attempting to reconnect...")
         if connect_to_pi_command():
@@ -66,17 +66,11 @@ def calculate_movement(image_shape, target_center):
     """Calculate dx, dy to center the target"""
     h, w = image_shape[:2]
     center_x, center_y = w // 2, h // 2
-
-    # Calculate normalized offsets (-1 to 1 range)
     dx = (target_center[0] - center_x) / (w / 2)
     dy = (target_center[1] - center_y) / (h / 2)
-
-    # Apply deadzone
     dx = 0 if abs(dx) < DEADZONE_PERCENT else dx
     dy = 0 if abs(dy) < DEADZONE_PERCENT else dy
-
-    # Clamp to [-1, 1]
-    return -max(-1.0, min(1.0, dx)), max(-0.5, min(0.5, dy))
+    return -dx * SPEED_FACTOR, dy * SPEED_FACTOR
 
 def find_closest_target(results, image_shape):
     """Find the target closest to the image center"""
@@ -91,9 +85,7 @@ def find_closest_target(results, image_shape):
         if class_name in TARGET_CLASSES:
             x1, y1, x2, y2 = [int(v) for v in box]
             target_center = ((x1 + x2) // 2, (y1 + y2) // 2)
-
             distance = np.sqrt((target_center[0] - center_x)**2 + (target_center[1] - center_y)**2)
-
             if distance < min_distance:
                 min_distance = distance
                 closest_target_info = {
@@ -106,140 +98,168 @@ def find_closest_target(results, image_shape):
 
 class RealTimeControl:
     def __init__(self, frame_skip=2):
-        self.frame_skip = max(1, frame_skip)  # Ensure minimum value is 1
+        self.frame_skip = max(1, frame_skip)
         self.frame_counter = 0
         self.last_target = None
         self.last_dx = 0
         self.last_dy = 0
-        self.stop_requested = False
         self.last_command_time = 0
+
+        # --- Threading for Video Capture ---
+        self.video_capture = cv2.VideoCapture(STREAM_URL, cv2.CAP_FFMPEG)
+        if not self.video_capture.isOpened():
+            raise IOError(f"Cannot open stream: {STREAM_URL}")
+        
+        # Try to set a small buffer size (may not be supported by backend)
+        self.video_capture.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+
+        self.latest_frame = None
+        self.last_ret = False
+        self.frame_lock = threading.Lock()
+        self.running = True
+        self.capture_thread = threading.Thread(target=self._reader_loop, daemon=True)
+
+        # --- Keyboard Listener ---
         self.listener = keyboard.Listener(on_press=self.on_press)
+
+    def _reader_loop(self):
+        """Continuously reads frames from the stream in a dedicated thread."""
+        print("🚀 Capture thread started.")
+        while self.running:
+            ret, frame = self.video_capture.read()
+            with self.frame_lock:
+                self.last_ret = ret
+                self.latest_frame = frame
+            if not ret:
+                print("⚠️ Stream connection lost in reader thread. Will keep trying to read.")
+                time.sleep(1) # Wait a bit before retrying
 
     def on_press(self, key):
         """Handle emergency stop on ESC key"""
         if key == keyboard.Key.esc:
             print("🛑 Emergency stop requested!")
-            self.stop_requested = True
+            self.running = False
             return False  # Stop listener
 
     def run(self):
-        """Main control loop with frame skipping"""
-        print(f"🚀 Starting real-time autonomous centering...")
-        print(f"Press 'q' in the window to exit or ESC for emergency stop.")
-        print(f"Frame skipping: Processing every {self.frame_skip} frames")
-        
+        """Main control loop."""
         self.listener.start()
+        self.capture_thread.start()
 
-        # Connect to video stream
-        cap = cv2.VideoCapture(STREAM_URL, cv2.CAP_FFMPEG)
-        if not cap.isOpened():
-            print(f"❌ Cannot open stream. Check URL: {STREAM_URL}")
-            return
-
+        print("Waiting for first frame from stream...")
+        time.sleep(2) 
+        print("✅ First frame received. Starting main loop.")
+        
         try:
-            while not self.stop_requested:
+            while self.running:
+                # 1. Get the latest frame from the reader thread
+                with self.frame_lock:
+                    ret, frame = self.last_ret, self.latest_frame
+
+                if not ret or frame is None:
+                    time.sleep(0.1)
+                    continue
+
                 self.frame_counter += 1
                 skip_frame = self.frame_counter % self.frame_skip != 0
-
-                # 1. Read Frame
-                ret, frame = cap.read()
-                if not ret:
-                    print("⚠️ Frame read error. Attempting to reconnect stream...")
-                    cap.release()
-                    time.sleep(2)
-                    cap = cv2.VideoCapture(STREAM_URL, cv2.CAP_FFMPEG)
-                    continue
 
                 # 2. Process Frame Conditionally
                 current_target = None
                 if not skip_frame:
-                    # Process frame with YOLO
                     results = model(frame, verbose=False)
                     current_target = find_closest_target(results, frame.shape)
-                    self.last_target = current_target  # Cache for skipped frames
+                    self.last_target = current_target
 
                     if current_target:
-                        self.last_dx, self.last_dy = calculate_movement(
-                            frame.shape, current_target["center"])
+                        self.last_dx, self.last_dy = calculate_movement(frame.shape, current_target["center"])
                     else:
                         self.last_dx, self.last_dy = 0, 0
                 else:
-                    # Use cached data from last processed frame
-                    current_target = self.last_target
+                    current_target = self.last_target # Use cached target
 
                 # 3. Visual Feedback
-                if current_target:
-                    # Determine box color (green for fresh, blue for cached)
-                    color = (0, 255, 0) if not skip_frame else (255, 0, 0)
-                    vector_color = (0, 255, 255) if not skip_frame else (255, 255, 0)
-                    label_suffix = "" if not skip_frame else " (cached)"
-                    
-                    x1, y1, x2, y2 = current_target["box"]
-                    cv2.rectangle(frame, (x1, y1), (x2, y2), color, 3)
-                    label = f"{current_target['class_name']}{label_suffix}"
-                    cv2.putText(frame, label, (x1, y1 - 10), 
-                               cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
-                    
-                    # Draw movement vector
-                    h, w = frame.shape[:2]
-                    center_x, center_y = w // 2, h // 2
-                    end_x = int(center_x + self.last_dx * w / 4)
-                    end_y = int(center_y + self.last_dy * h / 4)
-                    cv2.arrowedLine(frame, (center_x, center_y), (end_x, end_y), 
-                                  vector_color, 3)
+                h, w = frame.shape[:2]
+                center_x, center_y = w // 2, h // 2
 
-                # 4. Send Commands (use last values even for skipped frames)
+                # --- NEW: Always draw a static crosshair ---
+                crosshair_color = (0, 255, 255) # Cyan
+                cv2.line(frame, (center_x - 15, center_y), (center_x + 15, center_y), crosshair_color, 2)
+                cv2.line(frame, (center_x, center_y - 15), (center_x, center_y + 15), crosshair_color, 2)
+                # ---
+
+                if current_target:
+                    color = (0, 255, 0) if not skip_frame else (255, 150, 0)
+                    label_suffix = "" if not skip_frame else " (cached)"
+                    x1, y1, x2, y2 = current_target["box"]
+                    cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
+                    label = f"{current_target['class_name']}{label_suffix}"
+                    cv2.putText(frame, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
+
+                    # --- RESTORED: Draw movement vector when target is found ---
+                    end_x = int(center_x - self.last_dx * w / 4) # Note the minus sign to match movement
+                    end_y = int(center_y + self.last_dy * h / 4)
+                    cv2.arrowedLine(frame, (center_x, center_y), (end_x, end_y), (0, 255, 255), 2)
+                    # ---
+
+                # 4. Send Commands
                 current_time = time.time()
                 if current_time - self.last_command_time >= COMMAND_INTERVAL:
-                    send_command(self.last_dx, self.last_dy)
+                    send_command( - self.last_dx, -self.last_dy) # Send inverted dx, dy because of ... something
                     self.last_command_time = current_time
 
                 # 5. Display Information
-                status = f"Frame: {self.frame_counter} (Skipped)" if skip_frame else f"Frame: {self.frame_counter}"
-                target_status = 'Yes' if current_target else 'No'
-                info_text = f"{status} | Target: {target_status} | Move: dx={self.last_dx:.2f}, dy={self.last_dy:.2f}"
-                cv2.putText(frame, info_text, (10, 30), 
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
+                status = "Processing" if not skip_frame else "Skipped"
+                info_text = f"Frame: {self.frame_counter} ({status}) | Target: {'Yes' if current_target else 'No'} | Move: {self.last_dx:.2f}, {self.last_dy:.2f}"
+                cv2.putText(frame, info_text, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
                 cv2.imshow(window_name, frame)
 
-                # Check for exit keys
-                key = cv2.waitKey(1) & 0xFF
-                if key == ord('q'):
-                    break
-                if cv2.getWindowProperty(window_name, cv2.WND_PROP_VISIBLE) < 1:
+                if cv2.waitKey(1) & 0xFF == ord('q'):
+                    self.running = False
                     break
         finally:
-            self.cleanup(cap)
-            
-    def cleanup(self, cap):
-        """Gracefully shut down all connections and resources"""
+            self.cleanup()
+
+    def cleanup(self):
+        """Gracefully shut down all connections and resources."""
         print("\nCleaning up...")
-        send_command(0, 0)  # Send a final stop command
-        time.sleep(0.5)  # Ensure stop command is sent
+        self.running = False # Signal reader thread to stop
+        
+        # Wait for threads to finish
+        if self.listener.is_alive():
+            self.listener.stop()
+        if self.capture_thread.is_alive():
+            self.capture_thread.join(timeout=2) # Wait up to 2s
+
+        send_command(0, 0) # Send a final stop command
+        time.sleep(0.1)
         sock.close()
-        cap.release()
+        
+        if self.video_capture.isOpened():
+            self.video_capture.release()
         cv2.destroyAllWindows()
-        self.listener.stop()
         print("🔌 Connections closed. Clean exit.")
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='Real-time autonomous object centering with frame skipping.')
+    parser = argparse.ArgumentParser(description='Real-time autonomous object centering with a threaded frame reader.')
     parser.add_argument('--ip', default=PI_IP, help='Raspberry Pi IP for commands.')
     parser.add_argument('--stream', default=STREAM_URL, help='URL of the video stream.')
     parser.add_argument('--model', default=MODEL_PATH, help='Path to the YOLO model.')
     parser.add_argument('--speed', type=float, default=SPEED_FACTOR, help='Speed factor (0.1-1.0).')
-    parser.add_argument('--skip', type=int, default=FRAME_SKIP, 
-                       help='Process every N-th frame (default: 2, higher = faster)')
+    parser.add_argument('--skip', type=int, default=FRAME_SKIP, help='Process every N-th frame (e.g., 2)')
     args = parser.parse_args()
 
     PI_IP = args.ip
     STREAM_URL = args.stream
     MODEL_PATH = args.model
     SPEED_FACTOR = args.speed
-    FRAME_SKIP = max(1, args.skip)  # Ensure minimum value is 1
+    FRAME_SKIP = max(1, args.skip)
 
     if not connect_to_pi_command():
         sys.exit(1)
 
-    controller = RealTimeControl(frame_skip=FRAME_SKIP)
-    controller.run()
+    try:
+        controller = RealTimeControl(frame_skip=FRAME_SKIP)
+        controller.run()
+    except (IOError, KeyboardInterrupt) as e:
+        print(f"\n❌ An error occurred: {e}")
+        sys.exit(1)
