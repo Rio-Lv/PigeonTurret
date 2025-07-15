@@ -13,8 +13,8 @@ constexpr uint8_t STEP_X = 2, DIR_X = 5, EN_X = 8;
 constexpr uint8_t STEP_Y = 3, DIR_Y = 6, EN_Y = 9;
 
 // ── Motion parameters ─────────────────────────────────────
-constexpr float MAX_SPS_X = 800.0;    // steps per second
-constexpr float MAX_SPS_Y = 1200.0;
+constexpr float MAX_SPS_X = 200.0;    // steps per second
+constexpr float MAX_SPS_Y = 400.0;
 constexpr float DEADZONE  = 0.05;     // ignore tiny commands
 
 // ── State object ──────────────────────────────────────────
