@@ -2,7 +2,7 @@ import subprocess
 
 print("[*] Starting video transmission...")
 COMMAND = (
-    "raspivid -w 256 -h 256 -vf -fps 60  -t 0 -o - | nc -l -k -p 3333"
+    "raspivid -w 256 -h 256 -vf -fps 24  -t 0 -o - | nc -l -k -p 3333"
 )  # Start the camera streaming command
 
 # Blocks until the shell command exits
