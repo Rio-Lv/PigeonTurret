@@ -70,7 +70,7 @@ def calculate_movement(image_shape, target_center):
     dy = (target_center[1] - center_y) / (h / 2)
     dx = 0 if abs(dx) < DEADZONE_PERCENT else dx
     dy = 0 if abs(dy) < DEADZONE_PERCENT else dy
-    return -dx * SPEED_FACTOR, dy * SPEED_FACTOR
+    return dx * SPEED_FACTOR, dy * SPEED_FACTOR
 
 def find_closest_target(results, image_shape):
     """Find the target closest to the image center"""
