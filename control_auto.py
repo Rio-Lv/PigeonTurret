@@ -19,7 +19,7 @@ FRAME_SKIP = 5                           # Process every 5th frame (can be lower
 
 # --- AI and Vision ---
 MODEL_PATH = "yolov8n.pt"                 # Path to YOLO model
-TARGET_CLASSES = ["pigeon", "bird", "cup", "mug", "glass"]  # Classes to detect
+TARGET_CLASSES = ["pigeon", "bird", "cup", "mug", "glass", "person"]  # Classes to detect
 DEADZONE_PERCENT = 0.1                    # 10% deadzone around center
 SPEED_FACTOR = 1.0                        # Global speed multiplier (0.1-1.0)
 # ===============================
@@ -70,7 +70,7 @@ def calculate_movement(image_shape, target_center):
     dy = (target_center[1] - center_y) / (h / 2)
     dx = 0 if abs(dx) < DEADZONE_PERCENT else dx
     dy = 0 if abs(dy) < DEADZONE_PERCENT else dy
-    return dx * SPEED_FACTOR, dy * SPEED_FACTOR
+    return -dx * SPEED_FACTOR, dy * SPEED_FACTOR
 
 def find_closest_target(results, image_shape):
     """Find the target closest to the image center"""
