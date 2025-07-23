@@ -46,7 +46,9 @@ void setup()
   stepperY.setCurrentPosition(0);
 
   Serial.begin(115200);
+
   Serial.println(F("Arduino ready. Waiting for commands..."));
+
 }
 
 void loop()
