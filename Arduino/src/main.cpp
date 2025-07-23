@@ -77,8 +77,7 @@ void setup()
   stepperY.setAcceleration(ACCEL_STEPS_S2);
 
   Serial.begin(115200);
-  /* Initial handshake message for host scripts. */
-  Serial.println(F("Stepper ready"));
+  Serial.println(F("AccelStepper dual‑axis ready (u/d/r/l)."));
 }
 
 void loop()
