@@ -196,7 +196,7 @@ class RealTimeControl:
                     cv2.putText(frame, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
 
                     # --- RESTORED: Draw movement vector when target is found ---
-                    end_x = int(center_x - self.last_dx * w / 4) # Note the minus sign to match movement
+                    end_x = int(center_x + self.last_dx * w / 4)
                     end_y = int(center_y + self.last_dy * h / 4)
                     cv2.arrowedLine(frame, (center_x, center_y), (end_x, end_y), (0, 255, 255), 2)
                     # ---
@@ -204,7 +204,7 @@ class RealTimeControl:
                 # 4. Send Commands
                 current_time = time.time()
                 if current_time - self.last_command_time >= COMMAND_INTERVAL:
-                    send_command( - self.last_dx, -self.last_dy) # Send inverted dx, dy because of ... something
+                    send_command(self.last_dx, self.last_dy)
                     self.last_command_time = current_time
 
                 # 5. Display Information
