@@ -8,7 +8,7 @@ SERIAL_PORT = '/dev/tty.usbmodem14201'
 BAUD_RATE = 115200
 
 # --- Motion Parameters ---
-RADIUS = 1000
+RADIUS = 2000
 ROTATION_PERIOD = 100.0 # Time for a full circle if moves were instant
 
 def find_arduino_port():
@@ -46,7 +46,7 @@ def main():
     
     start_time = time.time()
     # Define how many steps make up the circle
-    CIRCLE_STEPS = 100 
+    CIRCLE_STEPS = 200 
 
     try:
         for i in range(CIRCLE_STEPS):
