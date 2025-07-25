@@ -22,7 +22,7 @@ BUFFER_SIZE = 4
 # --- Motion Control ---
 # Maps the camera view to the stepper motor's coordinate space.
 # If an object is at the far right of the screen, the motor will be commanded to go to +MOTION_RANGE_STEPS.
-MOTION_RANGE_STEPS = 1000
+MOTION_RANGE_STEPS = 6000
 # ===============================
 
 # Initialize YOLO model
@@ -45,10 +45,10 @@ def find_arduino_port():
                 return port.device
     return None
 
-def send_move(ser, x, y):
+def send_move(ser, coord):
     """Formats and sends a move command to the Arduino."""
-    command_obj = {"x": int(x), "y": int(y)}
-    command_str = json.dumps(command_obj) + '\n'
+    command_str = json.dumps(coord) + '\n'
+    print(f"📤 Sending: {command_str.strip()}...")
     ser.write(command_str.encode('utf-8'))
 
 class ThreadedCamera:
@@ -94,123 +94,72 @@ class ThreadedCamera:
         print("📷 Camera released.")
 
 def find_closest_target(results, frame_shape):
-    """Finds the detected object closest to the center of the frame."""
-    frame_center_x, frame_center_y = frame_shape[1] // 2, frame_shape[0] // 2
-    closest_target = None
-    min_distance = float('inf')
-
-    if not results or not results[0]:
-        return None
-
-    r = results[0]
-    for box, cls in zip(r.boxes.xyxy, r.boxes.cls):
-        class_name = model.names[int(cls)]
-        if class_name in TARGET_CLASSES:
-            x1, y1, x2, y2 = [int(v) for v in box]
-            target_center_x, target_center_y = (x1 + x2) // 2, (y1 + y2) // 2
-            distance = math.sqrt((target_center_x - frame_center_x)**2 + (target_center_y - frame_center_y)**2)
-            
-            if distance < min_distance:
-                min_distance = distance
-                closest_target = {"box": (x1, y1, x2, y2), "class_name": class_name}
-    return closest_target
-
-def main(serial_port):
-    """Main control loop."""
-    print(f"🔌 Connecting to Arduino on {serial_port} at {BAUD_RATE} bps...")
+    """
+    Return (dx, dy) from frame centre to the nearest TARGET_CLASSES object.
+    dx > 0 → right, dy > 0 → down. Returns None if none found.
+    """
     try:
+        if not results or not results[0]:
+            return (0,0)
 
-        ser = serial.Serial(serial_port, BAUD_RATE, timeout=10)
-        time.sleep(2)
-        while ser.in_waiting:
-            print(f"Arduino says: {ser.readline().decode().strip()}")
-    except serial.SerialException as e:
-        print(f"❌ Error opening serial port: {e}")
-        return
+        h, w = frame_shape[:2]
+        cx_frame, cy_frame = w // 2, h // 2
+        best_dx = best_dy = None
+        min_d2 = float("inf")
 
+        r = results[0]
+        for box, cls in zip(r.boxes.xyxy, r.boxes.cls):
+            if model.names[int(cls)] not in TARGET_CLASSES:
+                continue
+            x1, y1, x2, y2 = map(int, box)
+            dx = (x1 + x2) // 2 - cx_frame
+            dy = (y1 + y2) // 2 - cy_frame
+            d2 = dx * dx + dy * dy
+            if d2 < min_d2:
+                min_d2 = d2
+                best_dx, best_dy = dx, dy
+        if best_dx is None or best_dy is None:
+            print("⚠️ No target found.")
+            return (0, 0)
+        return (best_dx, best_dy) 
+    except Exception as e:
+        print(f"❌ Error finding closest target: {e}")
+        return (0, 0)
+
+
+def main():
+    
+    # 1. Get Latest Frame
+    # 2. Run YOLO Detection
+    # 3. Find Closest Target
+    # 4. Calculate Coordinates Relative to Global Coordinate
+    # 5. Send Coordinates to Arduino
+    # 6. wait for 
+    print("🔄 Starting main loop...")
+    
     camera = ThreadedCamera(STREAM_URL)
     camera.start()
-    time.sleep(2) # Wait for camera to buffer a frame
-
-    print("🚀 Starting main control loop. Press Ctrl+C to exit.")
     
-    try:
-        # --- Prime the Buffer ---
-        print(f"Priming Arduino buffer with {BUFFER_SIZE} initial commands (move to center)...")
-        for _ in range(BUFFER_SIZE):
-            send_move(ser, 0, 0)
-        
-        # --- Main Streaming Loop ---
-        while True:
-            # 1. Wait for acknowledgment from Arduino
-            response = ser.readline().decode().strip()
-            if response != "done":
-                if response: print(f"Arduino message: {response}")
-                continue
+    arduino_port = find_arduino_port()
+    if not arduino_port:
+        print("❌ Error: Could not automatically find Arduino port.")
+    
+    global_coord = {"x": 0, "y": 0}  # Global coordinate reference for the turret
+    # also acts as max turn helper max abs(X) = 1000 , abs(Y) = 1000
+    
+    while True:                         # run until you ^C
+        ret, frame = camera.read()      # <- use the helper
+        if not ret:
+            time.sleep(0.05)          # give the reader thread time
+            continue
 
-            # 2. Get the latest frame and run detection
-            ret, frame = camera.read()
-            if not ret or frame is None:
-                continue
+        results = model(frame, verbose=False)
+        dx, dy  = find_closest_target(results, frame.shape)
 
-            results = model(frame, verbose=False)
-            target = find_closest_target(results, frame.shape)
-            
-            # 3. Calculate and send the next move
-            if target:
-                h, w = frame.shape[:2]
-                center_x, center_y = w // 2, h // 2
-                box_center_x = (target["box"][0] + target["box"][2]) // 2
-                box_center_y = (target["box"][1] + target["box"][3]) // 2
+        print(f"🔍 Detected target: {dx}, {dy}")
+        time.sleep(0.5)
 
-                # Convert pixel offset to motor steps
-                # Note: dy is often inverted because pixel Y increases downwards
-                dx_norm = (box_center_x - center_x) / (w / 2)
-                dy_norm = (box_center_y - center_y) / (h / 2)
-                
-                motor_x = dx_norm * MOTION_RANGE_STEPS / 100
-                motor_y = dy_norm * MOTION_RANGE_STEPS / 100
 
-                send_move(ser, motor_x, motor_y)
-                
-                # --- Visual Feedback ---
-                x1, y1, x2, y2 = target["box"]
-                cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
-                cv2.putText(frame, target["class_name"], (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
-            else:
-                # No target found, send a command to go to center (0,0)
-                send_move(ser, 0, 0)
-
-            # --- Display the video feed ---
-            cv2.imshow("YOLO Control", frame)
-            if cv2.waitKey(1) & 0xFF == ord('q'):
-                break
-
-    except KeyboardInterrupt:
-        print("\n🛑 User requested stop.")
-    finally:
-        print("Cleaning up...")
-        # Command motors to center and wait for final acknowledgments
-        if 'ser' in locals() and ser.is_open:
-            for _ in range(BUFFER_SIZE):
-                send_move(ser, 0, 0)
-                time.sleep(0.1) # Give it a moment to send
-            ser.close()
-            print("🔌 Serial port closed.")
-        
-        camera.release()
-        cv2.destroyAllWindows()
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='Simplified YOLO object tracking for Arduino control.')
-    parser.add_argument('--port', help='Manually specify the serial port (e.g., COM3 or /dev/ttyACM0).')
-    args = parser.parse_args()
-
-    # Find port automatically or use the one specified by the user
-    port_to_use = args.port or find_arduino_port()
-    
-    if not port_to_use:
-        print("❌ Could not find Arduino. Please specify the port with --port.")
-        sys.exit(1)
-        
-    main(port_to_use)
+    main()
