@@ -119,7 +119,7 @@ def main(serial_port):
     """Main control loop."""
     print(f"🔌 Connecting to Arduino on {serial_port} at {BAUD_RATE} bps...")
     try:
-        ser = serial.Serial(serial_port, BAUD_RATE, timeout=10)
+        ser = serial.Serial(serial_port, BAUD_RATE, timeout=0)
         time.sleep(2)
         while ser.in_waiting:
             print(f"Arduino says: {ser.readline().decode().strip()}")
@@ -141,21 +141,17 @@ def main(serial_port):
         
         # --- Main Streaming Loop ---
         while True:
-            # 1. Wait for acknowledgment from Arduino
-            response = ser.readline().decode().strip()
-            if response != "done":
-                if response: print(f"Arduino message: {response}")
-                continue
-
-            # 2. Get the latest frame and run detection
+            # 1. Grab a frame and run detection
             ret, frame = camera.read()
             if not ret or frame is None:
                 continue
 
             results = model(frame, verbose=False)
             target = find_closest_target(results, frame.shape)
-            
-            # 3. Calculate and send the next move
+
+            motor_x = 0
+            motor_y = 0
+
             if target:
                 h, w = frame.shape[:2]
                 center_x, center_y = w // 2, h // 2
@@ -166,24 +162,30 @@ def main(serial_port):
                 # Note: dy is often inverted because pixel Y increases downwards
                 dx_norm = (box_center_x - center_x) / (w / 2)
                 dy_norm = (box_center_y - center_y) / (h / 2)
-                
+
                 motor_x = dx_norm * MOTION_RANGE_STEPS / 100
                 motor_y = dy_norm * MOTION_RANGE_STEPS / 100
 
-                send_move(ser, motor_x, motor_y)
-                
                 # --- Visual Feedback ---
                 x1, y1, x2, y2 = target["box"]
                 cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
                 cv2.putText(frame, target["class_name"], (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
-            else:
-                # No target found, send a command to go to center (0,0)
-                send_move(ser, 0, 0)
 
-            # --- Display the video feed ---
+            # 2. Show the video feed regardless of Arduino state
             cv2.imshow("YOLO Control", frame)
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
+
+            # 3. Check for acknowledgment from Arduino
+            if ser.in_waiting:
+                response = ser.readline().decode().strip()
+                if response != "done":
+                    if response:
+                        print(f"Arduino message: {response}")
+                    continue
+
+                # Send the next move based on the most recent frame
+                send_move(ser, motor_x, motor_y)
 
     except KeyboardInterrupt:
         print("\n🛑 User requested stop.")
