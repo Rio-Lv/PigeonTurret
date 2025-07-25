@@ -3,23 +3,25 @@
 #include <ArduinoJson.h>
 
 /* =============================================================
-   Dual-Axis Acknowledgment Demo
+   Dual-Axis Acknowledgment Demo (with Power-Saving)
    -------------------------------------------------
    Accepts absolute coordinates and sends "done" upon completion.
 
    Behaviour:
-   * Ignores new commands while a move is in progress.
-   * Sends a "done\n" message over serial when a move is complete.
-   * Motors are powered only during active motion.
+   * Disables motors after a period of inactivity to save power.
+   * Automatically re-enables motors when a new command is received.
    ------------------------------------------------------------- */
+
+// NEW: Configuration for the power-saving timer
+const unsigned long INACTIVITY_TIMEOUT_MS = 4000; // 4 seconds
 
 /* -------- Pin assignment & Gearing -------- */
 const uint8_t STEP_X = 2;
 const uint8_t DIR_X  = 5;
 const uint8_t STEP_Y = 3;
 const uint8_t DIR_Y  = 6;
-const uint8_t EN_PIN = 8;
-const float GEAR_RATIO_X = 48.0f/20.0f; // 1:4 gearing for X-axis
+const uint8_t EN_PIN = 8; // Assumes LOW=on, HIGH=off
+const float GEAR_RATIO_X = 48.0f / 20.0f;
 
 /* -------- Motion parameters -------- */
 const float MAX_SPEED_STEPS_S = 800.0f * 32;
@@ -29,14 +31,30 @@ const float ACCEL_STEPS_S2    = 400.0f * 32;
 AccelStepper stepperX(AccelStepper::DRIVER, STEP_X, DIR_X);
 AccelStepper stepperY(AccelStepper::DRIVER, STEP_Y, DIR_Y);
 
-// NEW: State variable to track if motors are busy
+/* -------- State Variables -------- */
 bool isMoving = false;
+// NEW: Variables for tracking motor power state and activity
+bool motorsEnabled = true;
+unsigned long lastActivityTime = 0;
+
+// NEW: Helper function to disable motor drivers
+void disableMotors() {
+  digitalWrite(EN_PIN, HIGH); // Set HIGH to disable most common drivers
+  motorsEnabled = false;
+  // Serial.println(F("Motors disabled due to inactivity.")); // Optional debug message
+}
+
+// NEW: Helper function to enable motor drivers
+void enableMotors() {
+  digitalWrite(EN_PIN, LOW); // Set LOW to enable
+  motorsEnabled = true;
+  // Serial.println(F("Motors enabled.")); // Optional debug message
+}
 
 /* -------- Arduino lifecycle -------- */
-void setup()
-{
+void setup() {
   pinMode(EN_PIN, OUTPUT);
-  digitalWrite(EN_PIN, LOW); // Enable drivers; they will be disabled when motion completes
+  enableMotors(); // Ensure motors are enabled on startup
 
   stepperX.setMaxSpeed(MAX_SPEED_STEPS_S * GEAR_RATIO_X);
   stepperX.setAcceleration(ACCEL_STEPS_S2 * GEAR_RATIO_X);
@@ -47,31 +65,38 @@ void setup()
   stepperY.setCurrentPosition(0);
 
   Serial.begin(115200);
-
   Serial.println(F("Arduino ready. Waiting for commands..."));
 
+  // NEW: Initialize the activity timer
+  lastActivityTime = millis();
 }
 
-void loop()
-{
+void loop() {
   // These MUST always run to step the motors
   stepperX.run();
   stepperY.run();
 
   // --- State Machine Logic ---
 
-  // If we are currently executing a move, check if it's finished.
   if (isMoving) {
-    // A move is complete when both motors have 0 steps left to go.
+    // We are active, so reset the timer
+    lastActivityTime = millis();
+    // Check if the move is finished
     if (stepperX.distanceToGo() == 0 && stepperY.distanceToGo() == 0) {
       isMoving = false;
-      digitalWrite(EN_PIN, HIGH); // Disable drivers when idle
-      Serial.println("done"); // Send acknowledgment to Python
+      lastActivityTime = millis(); // Reset timer one last time when move completes
+      Serial.println("done");
     }
-  }
-  // Otherwise, if we are idle, check for a new command.
-  else {
+  } else { // Not moving, check for new commands or timeout
+    // Check for a new command
     if (Serial.available() > 0) {
+      // NEW: A command is arriving, so re-enable motors if they were off
+      if (!motorsEnabled) {
+        enableMotors();
+        // Give drivers a moment to stabilize before moving. 10ms is generous.
+        delay(10); 
+      }
+      
       StaticJsonDocument<96> doc;
       DeserializationError error = deserializeJson(doc, Serial);
 
@@ -93,10 +118,17 @@ void loop()
         commanded = true;
       }
 
-      // If a valid move was commanded, enable drivers and set state to moving.
       if (commanded) {
-        digitalWrite(EN_PIN, LOW); // Enable drivers for motion
         isMoving = true;
+        // NEW: Reset the activity timer since we just got a new command
+        lastActivityTime = millis();
+      }
+    }
+
+    // NEW: Check for inactivity timeout if motors are enabled and we are not moving
+    if (motorsEnabled && !isMoving) {
+      if (millis() - lastActivityTime > INACTIVITY_TIMEOUT_MS) {
+        disableMotors();
       }
     }
   }
