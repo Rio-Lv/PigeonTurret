@@ -18,11 +18,11 @@ const uint8_t DIR_X  = 5;
 const uint8_t STEP_Y = 3;
 const uint8_t DIR_Y  = 6;
 const uint8_t EN_PIN = 8;
-const float GEAR_RATIO_X = 1.0f / 4.0f;
+const float GEAR_RATIO_X = 48.0f/20.0f; // 1:4 gearing for X-axis
 
 /* -------- Motion parameters -------- */
-const float MAX_SPEED_STEPS_S = 800.0f * 128;
-const float ACCEL_STEPS_S2    = 400.0f * 128;
+const float MAX_SPEED_STEPS_S = 800.0f * 32;
+const float ACCEL_STEPS_S2    = 400.0f * 32;
 
 /* -------- AccelStepper objects -------- */
 AccelStepper stepperX(AccelStepper::DRIVER, STEP_X, DIR_X);

@@ -2,12 +2,17 @@ import serial
 import time
 import json
 
+L = 500
 # List of coordinates to move to in sequence
 COORDS = [
     {"x": 0, "y": 0},
-    {"x": 200, "y": 0},
-    {"x": 200, "y": 200},
-    {"x": 0, "y": 200},
+    {"x": -L, "y": 0},
+    {"x": -L, "y": L},
+    {"x": L, "y": L},
+    {"x": L, "y": -L},
+    {"x": -L, "y": -L},
+    {"x": -L, "y": 0},
+    {"x": 0, "y": 0},
 ]
 
 SERIAL_PORT = '/dev/tty.usbmodem14201'
