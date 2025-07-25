@@ -119,6 +119,7 @@ def main(serial_port):
     """Main control loop."""
     print(f"🔌 Connecting to Arduino on {serial_port} at {BAUD_RATE} bps...")
     try:
+
         ser = serial.Serial(serial_port, BAUD_RATE, timeout=10)
         time.sleep(2)
         while ser.in_waiting:
