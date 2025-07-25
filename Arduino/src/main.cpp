@@ -10,6 +10,7 @@
    Behaviour:
    * Ignores new commands while a move is in progress.
    * Sends a "done\n" message over serial when a move is complete.
+   * Motors are powered only during active motion.
    ------------------------------------------------------------- */
 
 /* -------- Pin assignment & Gearing -------- */
@@ -35,7 +36,7 @@ bool isMoving = false;
 void setup()
 {
   pinMode(EN_PIN, OUTPUT);
-  digitalWrite(EN_PIN, LOW);
+  digitalWrite(EN_PIN, LOW); // Enable drivers; they will be disabled when motion completes
 
   stepperX.setMaxSpeed(MAX_SPEED_STEPS_S * GEAR_RATIO_X);
   stepperX.setAcceleration(ACCEL_STEPS_S2 * GEAR_RATIO_X);
@@ -64,6 +65,7 @@ void loop()
     // A move is complete when both motors have 0 steps left to go.
     if (stepperX.distanceToGo() == 0 && stepperY.distanceToGo() == 0) {
       isMoving = false;
+      digitalWrite(EN_PIN, HIGH); // Disable drivers when idle
       Serial.println("done"); // Send acknowledgment to Python
     }
   }
@@ -91,8 +93,9 @@ void loop()
         commanded = true;
       }
 
-      // If a valid move was commanded, set our state to moving.
+      // If a valid move was commanded, enable drivers and set state to moving.
       if (commanded) {
+        digitalWrite(EN_PIN, LOW); // Enable drivers for motion
         isMoving = true;
       }
     }
