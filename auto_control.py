@@ -119,7 +119,8 @@ def main(serial_port):
     """Main control loop."""
     print(f"🔌 Connecting to Arduino on {serial_port} at {BAUD_RATE} bps...")
     try:
-        ser = serial.Serial(serial_port, BAUD_RATE, timeout=0)
+        # Small timeout avoids partial reads while still returning quickly
+        ser = serial.Serial(serial_port, BAUD_RATE, timeout=0.1)
         time.sleep(2)
         while ser.in_waiting:
             print(f"Arduino says: {ser.readline().decode().strip()}")
