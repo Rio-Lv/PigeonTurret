@@ -13,7 +13,7 @@ COMMAND = (
     "-b 1000000            "   # ~1 Mbit/s is plenty for 512×512@6 fps
     "-t 0                  "   # run forever
     # ─── built‑in server instead of netcat ─────────────────────────────────────
-    "-l -o udp://0.0.0.0:3333" # listen & stream over UDP (lower jitter than TCP) :contentReference[oaicite:2]{index=2}
+    "-o udp://0.0.0.0:3333" # listen & stream over UDP (lower jitter than TCP) :contentReference[oaicite:2]{index=2}
 )
 
 
