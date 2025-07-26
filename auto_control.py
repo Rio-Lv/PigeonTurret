@@ -12,7 +12,7 @@ import serial
 # --- Stream and Model ---
 STREAM_URL = "tcp://192.168.1.120:3333" # Video stream URL
 MODEL_PATH = "yolov8n.pt"                # Path to your YOLO model
-TARGET_CLASSES = ["mug", "cup"]  # Classes to detect
+TARGET_CLASSES = ["cup"]  # Classes to detect
 MIN_CONFIDENCE = 0.7  # Minimum confidence for detection
 
 # --- Arduino Communication ---
@@ -24,6 +24,7 @@ BUFFER_SIZE = 4
 # Maps the camera view to the stepper motor's coordinate space.
 STEPS_PER_SCREEN_WIDTH = 1500
 LIMIT = STEPS_PER_SCREEN_WIDTH/2
+MIN_MOVE_DISTANCE = 0.1
 # ===============================
 
 # Initialize YOLO model
@@ -196,9 +197,14 @@ def main():
 
         results = model(frame, verbose=False)
         dx, dy  = get_target_coordinates(results, frame.shape)
-
-        dx *= STEPS_PER_SCREEN_WIDTH/2
-        dy *= -STEPS_PER_SCREEN_WIDTH/2
+        
+        d = math.sqrt(dx * dx + dy * dy)
+        if d < MIN_MOVE_DISTANCE:  # No need to move if target is very close
+            print("🔍 Target is close enough, not moving.")
+            continue
+        
+        dx *= STEPS_PER_SCREEN_WIDTH
+        dy *= -STEPS_PER_SCREEN_WIDTH
         print(f"🔍 Detected target: {dx}, {dy}")
         x = global_coord["x"] + dx
         y = global_coord["y"] + dy
@@ -211,6 +217,7 @@ def main():
         if y > LIMIT:
             y = LIMIT
         elif y < -LIMIT:
+            
             y = -LIMIT
 
         coord = {"x": int(x), "y": int(y)}
