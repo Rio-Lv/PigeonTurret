@@ -2,17 +2,13 @@ import serial
 import time
 import json
 
-L = 500
+
+STEPS_PER_SCREEN_WIDTH = 1500  # More or less Steps per Screen Width/Height
+L = STEPS_PER_SCREEN_WIDTH # Length of the motion range in steps
 # List of coordinates to move to in sequence
 COORDS = [
     {"x": 0, "y": 0},
-    {"x": -L, "y": 0},
-    {"x": -L, "y": L},
-    {"x": L, "y": L},
-    {"x": L, "y": -L},
-    {"x": -L, "y": -L},
-    {"x": -L, "y": 0},
-    {"x": 0, "y": 0},
+    {"x": 0, "y": L},
 ]
 
 SERIAL_PORT = '/dev/tty.usbmodem14201'

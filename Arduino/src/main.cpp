@@ -24,8 +24,8 @@ const uint8_t EN_PIN = 8; // Assumes LOW=on, HIGH=off
 const float GEAR_RATIO_X = 48.0f / 20.0f;
 
 /* -------- Motion parameters -------- */
-const float MAX_SPEED_STEPS_S = 800.0f * 32;
-const float ACCEL_STEPS_S2    = 400.0f * 32;
+const float MAX_SPEED_STEPS_S = 800.0f * 4;
+const float ACCEL_STEPS_S2    = 400.0f * 4;
 
 /* -------- AccelStepper objects -------- */
 AccelStepper stepperX(AccelStepper::DRIVER, STEP_X, DIR_X);
