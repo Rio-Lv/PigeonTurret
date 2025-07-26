@@ -108,6 +108,8 @@ void loop() {
       }
 
       bool commanded = false;
+
+
       if (doc.containsKey("x")) {
         long targetX = doc["x"];
         stepperX.moveTo(targetX * GEAR_RATIO_X);

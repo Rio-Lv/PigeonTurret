@@ -89,14 +89,6 @@ def find_arduino_port():
                 return port.device
     return None
 
-def go(ser, coord):
-    """Formats and sends a move command to the Arduino."""
-    command_str = json.dumps(coord) + '\n'
-    print(f"📤 Sending: {command_str.strip()}...")
-    ser.write(command_str.encode('utf-8'))
-    response = ser.readline().decode().strip()
-    print(f"Arduino acknowledged final move: '{response}'")
-
 def get_target_coordinates(results, frame_shape):
     """
     Return (dx_norm, dy_norm) for the *nearest* object that
@@ -158,6 +150,14 @@ def get_target_coordinates(results, frame_shape):
     except Exception as e:
         print(f"❌ Error finding closest target: {e}")
         return 0.0, 0.0
+
+def go(ser, coord):
+    """Formats and sends a move command to the Arduino."""
+    command_str = json.dumps(coord) + '\n'
+    print(f"📤 Sending: {command_str.strip()}...")
+    ser.write(command_str.encode('utf-8'))
+    response = ser.readline().decode().strip()
+    print(f"Arduino acknowledged final move: '{response}'")
     
 def main():
     
@@ -196,6 +196,7 @@ def main():
 
         results = model(frame, verbose=False)
         dx, dy  = get_target_coordinates(results, frame.shape)
+
         dx *= STEPS_PER_SCREEN_WIDTH/2
         dy *= -STEPS_PER_SCREEN_WIDTH/2
         print(f"🔍 Detected target: {dx}, {dy}")
@@ -216,10 +217,6 @@ def main():
         go(ser, coord)  # Send the coordinates to the Arduino
         global_coord["x"] = x
         global_coord["y"] = y
-        
-        # time.sleep(0.5)
-        
-
 
 
 if __name__ == "__main__":

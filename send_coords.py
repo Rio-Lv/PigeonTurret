@@ -8,7 +8,13 @@ L = STEPS_PER_SCREEN_WIDTH # Length of the motion range in steps
 # List of coordinates to move to in sequence
 COORDS = [
     {"x": 0, "y": 0},
-    {"x": 0, "y": L},
+    {"x": 0, "y": L/2},
+    {"x": 0, "y": 0},
+    {"x": 0, "y": -L/2},
+    {"x": 0, "y": 0},
+    {"x": L/2, "y": 0},
+    {"x": 0, "y": 0},
+    {"x": -L/2, "y": 0},
 ]
 
 SERIAL_PORT = '/dev/tty.usbmodem14201'
