@@ -24,7 +24,7 @@ BUFFER_SIZE = 4
 # Maps the camera view to the stepper motor's coordinate space.
 STEPS_PER_SCREEN_WIDTH = 1500
 LIMIT = STEPS_PER_SCREEN_WIDTH/2
-MIN_MOVE_DISTANCE = 0.1
+MIN_MOVE_DISTANCE = 0.05
 # ===============================
 
 # Initialize YOLO model
@@ -205,6 +205,8 @@ def main():
         
         dx *= STEPS_PER_SCREEN_WIDTH
         dy *= -STEPS_PER_SCREEN_WIDTH
+        dx /= 2.0  # Convert to motor steps
+        dy /= 2.0  # Convert to motor steps
         print(f"🔍 Detected target: {dx}, {dy}")
         x = global_coord["x"] + dx
         y = global_coord["y"] + dy
@@ -217,13 +219,13 @@ def main():
         if y > LIMIT:
             y = LIMIT
         elif y < -LIMIT:
-            
             y = -LIMIT
 
-        coord = {"x": int(x), "y": int(y)}
+        coord = {"x": x, "y": y}
         go(ser, coord)  # Send the coordinates to the Arduino
         global_coord["x"] = x
         global_coord["y"] = y
+        time.sleep(0.5)
 
 
 if __name__ == "__main__":

@@ -94,7 +94,7 @@ void loop() {
       if (!motorsEnabled) {
         enableMotors();
         // Give drivers a moment to stabilize before moving. 10ms is generous.
-        delay(10); 
+        delay(5); 
       }
       
       StaticJsonDocument<96> doc;
