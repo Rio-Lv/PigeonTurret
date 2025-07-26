@@ -4,17 +4,19 @@ print("[*] Starting video transmission...")
 COMMAND = (
     # ─── raspivid ───────────────────────────────────────────────────────────────
     "raspivid "
-    "-w 512 -h 512         "   # keep your 1:1 square frame
-    "-vf -fps 6            "   # vertical‑flip, 6 fps
-    "-pf baseline          "   # no B‑frames → no encoder re‑ordering delay
-    "-g 4                  "   # send an IDR every 4 frames so the client can resync fast
-    "-ih                   "   # put SPS/PPS in every frame for instant decoder start‑up :contentReference[oaicite:0]{index=0}
-    "-fl                   "   # flush the MMAL pipeline after each frame :contentReference[oaicite:1]{index=1}
-    "-b 1000000            "   # ~1 Mbit/s is plenty for 512×512@6 fps
-    "-t 0                  "   # run forever
-    # ─── built‑in server instead of netcat ─────────────────────────────────────
-    "-o udp://0.0.0.0:3333" # listen & stream over UDP (lower jitter than TCP) :contentReference[oaicite:2]{index=2}
+    "-w 512 -h 512 "        # 1 : 1 square frame
+    "-vf "                  # vertical‑flip
+    "-fps 6 "               # 6 fps
+    "-pf baseline "         # disable B‑frames → no encoder re‑ordering delay
+    "-g 4 "                 # IDR every 4 frames (fast resync)
+    "-ih "                  # put SPS/PPS in every frame (instant decoder start‑up)
+    "-fl "                  # flush MMAL pipeline after each frame
+    "-b 1000000 "           # ~1 Mbit/s is plenty for 512×512 @ 6 fps
+    "-t 0 "                 # run forever
+    # ─── built‑in UDP server ───────────────────────────────────────────────────
+    "-o udp://0.0.0.0:3333" # stream over UDP (lower jitter than TCP)
 )
+
 
 
 # Blocks until the shell command exits
