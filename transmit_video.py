@@ -2,22 +2,9 @@ import subprocess
 
 print("[*] Starting video transmission...")
 COMMAND = (
-    # ─── raspivid ───────────────────────────────────────────────────────────────
-    "raspivid "
-    "-w 512 -h 512 "        # 1 : 1 square frame
-    "-vf "                  # vertical‑flip
-    "-fps 6 "               # 6 fps
-    "-pf baseline "         # disable B‑frames → no encoder re‑ordering delay
-    "-g 4 "                 # IDR every 4 frames (fast resync)
-    "-ih "                  # put SPS/PPS in every frame (instant decoder start‑up)
-    "-fl "                  # flush MMAL pipeline after each frame
-    "-b 1000000 "           # ~1 Mbit/s is plenty for 512×512 @ 6 fps
-    "-t 0 "                 # run forever
-    # ─── built‑in UDP server ───────────────────────────────────────────────────
-    "-o udp://0.0.0.0:3333" # stream over UDP (lower jitter than TCP)
+    "raspivid -w 512 -h 512 -vf -fps 6 -t 0 "
+    "-o - | nc -l -k -p 3333"
 )
-
-
 
 # Blocks until the shell command exits
 subprocess.call(COMMAND, shell=True)
