@@ -3,7 +3,6 @@ import subprocess
 print("[*] Starting video transmission...")
 COMMAND = (
     "raspivid -w 512 -h 512 -vf -fps 24 -t 0 "
-    "-awb off -awbg 1.5,1.2 -sa 30 -co 20 "  
     "-o - | nc -l -k -p 3333"
 )
 
