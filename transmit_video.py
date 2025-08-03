@@ -1,14 +1,10 @@
 import subprocess
 
-print("[*] Starting video transmission...")
+# This command is optimized for low latency on older systems
 COMMAND = (
-    "raspivid -w 512 -h 512 -vf -fps 6 -t 0 "
-    "-o - | nc -l -k -p 3333"
+    "stdbuf -o0 raspivid -w 512 -h 512 -fps 30 -ih -t 0 -o - "
+    "| nc -u -l -p 3333"
 )
 
-# Blocks until the shell command exits
+print("Starting low-latency video transmission...")
 subprocess.call(COMMAND, shell=True)
-
-# If you prefer to raise an exception when the command returns a
-# non-zero exit code, swap for:
-# subprocess.check_call(COMMAND, shell=True)

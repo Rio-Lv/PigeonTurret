@@ -14,7 +14,7 @@ from serial.tools import list_ports
 # --- Stream and Model ---
 STREAM_URL = "tcp://192.168.1.120:3333" # Video stream URL
 MODEL_PATH = "yolov8n.pt"                # Path to your YOLO model
-TARGET_CLASSES = ["mug", "cup"]  # Classes to detect
+TARGET_CLASSES = ["mug", "cup", "person"]  # Classes to detect
 MIN_CONFIDENCE = 0.7  # Minimum confidence for detection
 
 # --- Arduino Communication ---
