@@ -98,7 +98,7 @@ if __name__ == "__main__":
     parser.add_argument(
         'url', 
         nargs='?', 
-        default="tcp://192.168.1.120:3333", 
+        default="udp://192.168.1.120:3333", 
         help="The URL of the video stream (e.g., tcp://HOST:PORT)"
     )
     args = parser.parse_args()
