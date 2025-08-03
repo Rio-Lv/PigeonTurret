@@ -44,7 +44,7 @@ def main():
         'ffmpeg',
         '-f', 'rawvideo',
         '-pixel_format', 'bgr24',
-        '-s', f'{WIDTH}x{HEIGHT}',
+        '-s', '{}x{}'.format(WIDTH, HEIGHT),
         '-r', str(FPS),
         '-i', '-',
         '-f', 'mpegts',
@@ -56,7 +56,7 @@ def main():
 
     nc_command = ['nc', '-l', '-k', '-p', str(STREAM_PORT)]
 
-    print(f"[*] Starting stream: {' '.join(stream_command)} | {' '.join(nc_command)}")
+    print("[*] Starting stream: {} | {}".format(' '.join(stream_command), ' '.join(nc_command)))
 
     # Start the ffmpeg process
     ffmpeg_process = subprocess.Popen(stream_command, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
